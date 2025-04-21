@@ -1,137 +1,147 @@
-from pathlib import Path
+import os
 import matplotlib.pyplot as plt
 
-DATA_DIR = Path(__file__).with_name("data")
+DATA_DIR = ""
 
-from pathlib import Path
-
-DATA_DIR = Path(__file__).with_name("data")
-
+# -------------------------------
+# Load students from students.txt
+# -------------------------------
 def load_students():
-    """Return dict {student_id: student_name}, tolerating blank lines & both id‑first/last."""
     students = {}
-    path = DATA_DIR / "students.txt"
-
-    with path.open() as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue                      # skip blanks
-
-            # Try comma‑separated first
-            if "," in line:
-                left, right = [x.strip() for x in line.split(",", 1)]
-            else:
-                # Fall back to "name … id" (split on last whitespace group)
-                left, right = line.rsplit(None, 1)
-
-            # Decide which side is the 3‑digit id
-            if left.isdigit():
-                sid, name = left, right
-            elif right.isdigit():
-                sid, name = right, left
-            else:                             # still malformed → ignore
-                continue
-
-            students[sid] = name
-
+    with open(os.path.join(DATA_DIR, "students.txt"), "r") as file:
+        for line in file:
+            line = line.strip()
+            if not line or "," not in line:
+                continue  # skip blanks or bad lines
+            sid, name = line.split(",", 1)
+            students[sid.strip()] = name.strip()
     return students
 
-
+# -----------------------------------
+# Load assignments from assignments.txt
+# -----------------------------------
 def load_assignments():
-    """Return dict {assignment_id: (name, points)}"""
     assignments = {}
-    path = DATA_DIR / "assignments.txt"
-
-    with path.open() as f:
-        for line in f:
+    with open(os.path.join(DATA_DIR, "assignments.txt"), "r") as file:
+        for line in file:
             parts = line.strip().split(",")
             if len(parts) != 3:
-                continue  # skip lines that aren't valid
-            aid, aname, points = [p.strip() for p in parts]
+                continue
+            aid, name, points = parts
             try:
-                assignments[aid] = (aname, int(points))
+                assignments[aid.strip()] = (name.strip(), int(points.strip()))
             except ValueError:
-                continue  # skip if points isn't a valid number
-
+                continue  # skip if points not valid int
     return assignments
 
+# ------------------------------------
+# Load submissions from submissions.txt
+# ------------------------------------
 def load_submissions():
-    """
-    Return dict {assignment_id: list of (student_id, pct)}
-           and dict {student_id: list of (assignment_id, pct)}
-    """
-    by_assign, by_student = {}, {}
-    path = DATA_DIR / "submissions.txt"
-    with path.open() as f:
-        for sid, aid, pct in (line.strip().split(",", 2) for line in f):
-            pct = float(pct)              # keep as 0–1 fraction
-            by_assign.setdefault(aid, []).append((sid, pct))
-            by_student.setdefault(sid, []).append((aid, pct))
-    return by_assign, by_student
+    by_student = {}
+    by_assignment = {}
+    with open(os.path.join(DATA_DIR, "submissions.txt"), "r") as file:
+        for line in file:
+            parts = line.strip().split(",")
+            if len(parts) != 3:
+                continue
+            sid, aid, percent = parts
+            try:
+                pct = float(percent.strip())
+            except ValueError:
+                continue
+            by_student.setdefault(sid.strip(), []).append((aid.strip(), pct))
+            by_assignment.setdefault(aid.strip(), []).append((sid.strip(), pct))
+    return by_student, by_assignment
 
-def course_percentage(student_id, by_student, assignments):
-    """Return overall course % (0–100) for that student"""
-    earned, possible = 0, 0
+# -------------------------------
+# Menu function
+# -------------------------------
+def print_menu():
+    print("1. Student grade")
+    print("2. Assignment statistics")
+    print("3. Assignment graph")
+    return input("Enter your selection: ")
+
+# -------------------------------
+# Calculate overall course grade
+# -------------------------------
+def calculate_grade(student_id, by_student, assignments):
+    total_earned = 0
+    total_possible = 0
     for aid, pct in by_student.get(student_id, []):
-        points = assignments[aid][1]
-        earned   += pct * points
-        possible += points
-    # spec says total points = 1000, but compute anyway
-    return round((earned / possible) * 100) if possible else None
+        if aid in assignments:
+            _, points = assignments[aid]
+            total_earned += pct * points
+            total_possible += points
+    if total_possible == 0:
+        return None
+    return round((total_earned / total_possible) * 100)
 
-def assignment_stats(aid, by_assign):
-    """Return (min%, avg%, max%) rounded to whole numbers"""
-    scores = [pct * 100 for _, pct in by_assign.get(aid, [])]
+# -------------------------------
+# Calculate assignment stats
+# -------------------------------
+def assignment_stats(aid, by_assignment):
+    scores = [pct * 100 for _, pct in by_assignment.get(aid, [])]
     if not scores:
         return None
-    return (round(min(scores)),
-            round(sum(scores)/len(scores)),
-            round(max(scores)))
+    return round(min(scores)), round(sum(scores) / len(scores)), round(max(scores))
 
+# -------------------------------
+# Main logic
+# -------------------------------
 def main():
-    students      = load_students()
-    assignments   = load_assignments()
-    by_assign, by_student = load_submissions()
+    students = load_students()
+    assignments = load_assignments()
+    by_student, by_assignment = load_submissions()
 
-    print("1. Student grade\n2. Assignment statistics\n3. Assignment graph")
-    choice = input("\nEnter your selection: ").strip()
+    option = print_menu()
 
-    if choice == "1":
-        name = input("What is the student's name: ").strip()
-        # find id from name (linear scan is fine – only a few students)
-        matches = [sid for sid, sname in students.items()
-                   if sname.lower() == name.lower()]
-        if not matches:
+    if option == "1":
+        student_name = input("What is the student's name: ").strip()
+        sid = None
+        for student_id, name in students.items():
+            if name.lower() == student_name.lower():
+                sid = student_id
+                break
+        if not sid:
             print("Student not found")
-            return
-        pct = course_percentage(matches[0], by_student, assignments)
-        print(f"{pct}%")
+        else:
+            grade = calculate_grade(sid, by_student, assignments)
+            print(f"{grade}%")
 
-    elif choice == "2":
+    elif option == "2":
         aname = input("What is the assignment name: ").strip()
-        # find id from assignment name
-        matches = [aid for aid, (nm, _) in assignments.items()
-                   if nm.lower() == aname.lower()]
-        if not matches:
+        aid = None
+        for assignment_id, (name, _) in assignments.items():
+            if name.lower() == aname.lower():
+                aid = assignment_id
+                break
+        if not aid:
             print("Assignment not found")
-            return
-        stats = assignment_stats(matches[0], by_assign)
-        print(f"Min: {stats[0]}%\nAvg: {stats[1]}%\nMax: {stats[2]}%")
+        else:
+            stats = assignment_stats(aid, by_assignment)
+            if stats:
+                print(f"Min: {stats[0]}%")
+                print(f"Avg: {stats[1]}%")
+                print(f"Max: {stats[2]}%")
 
-    elif choice == "3":
+    elif option == "3":
         aname = input("What is the assignment name: ").strip()
-        matches = [aid for aid, (nm, _) in assignments.items()
-                   if nm.lower() == aname.lower()]
-        if not matches:
+        aid = None
+        for assignment_id, (name, _) in assignments.items():
+            if name.lower() == aname.lower():
+                aid = assignment_id
+                break
+        if not aid:
             print("Assignment not found")
-            return
-        scores = [pct*100 for _, pct in by_assign[matches[0]]]
-        plt.hist(scores, bins=[0,25,50,75,100])
-        plt.title(aname)
-        plt.xlabel("Score (%)")
-        plt.ylabel("Number of students")
-        plt.show()
+        else:
+            scores = [pct * 100 for _, pct in by_assignment.get(aid, [])]
+            plt.hist(scores, bins=[0, 25, 50, 75, 100])
+            plt.title(aname)
+            plt.xlabel("Score (%)")
+            plt.ylabel("Number of Students")
+            plt.show()
 
 if __name__ == "__main__":
     main()
