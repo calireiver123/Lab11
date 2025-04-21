@@ -40,10 +40,21 @@ def load_students():
 
 def load_assignments():
     """Return dict {assignment_id: (name, points)}"""
+    assignments = {}
     path = DATA_DIR / "assignments.txt"
+
     with path.open() as f:
-        return {aid: (aname, int(points)) for aid, aname, points in
-                (line.strip().split(",", 2) for line in f)}
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) != 3:
+                continue  # skip lines that aren't valid
+            aid, aname, points = [p.strip() for p in parts]
+            try:
+                assignments[aid] = (aname, int(points))
+            except ValueError:
+                continue  # skip if points isn't a valid number
+
+    return assignments
 
 def load_submissions():
     """
