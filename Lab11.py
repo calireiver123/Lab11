@@ -3,12 +3,40 @@ import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).with_name("data")
 
+from pathlib import Path
+
+DATA_DIR = Path(__file__).with_name("data")
+
 def load_students():
-    """Return dict {student_id: student_name}"""
+    """Return dict {student_id: student_name}, tolerating blank lines & both id‑first/last."""
+    students = {}
     path = DATA_DIR / "students.txt"
+
     with path.open() as f:
-        return {sid: name.strip() for sid, name in
-                (line.strip().split(",", 1) for line in f)}
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue                      # skip blanks
+
+            # Try comma‑separated first
+            if "," in line:
+                left, right = [x.strip() for x in line.split(",", 1)]
+            else:
+                # Fall back to "name … id" (split on last whitespace group)
+                left, right = line.rsplit(None, 1)
+
+            # Decide which side is the 3‑digit id
+            if left.isdigit():
+                sid, name = left, right
+            elif right.isdigit():
+                sid, name = right, left
+            else:                             # still malformed → ignore
+                continue
+
+            students[sid] = name
+
+    return students
+
 
 def load_assignments():
     """Return dict {assignment_id: (name, points)}"""
